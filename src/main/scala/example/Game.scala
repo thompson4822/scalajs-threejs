@@ -12,7 +12,6 @@ import scala.scalajs.js
 object Game {
   @JSExport
   def main(container: HTMLElement) {
-    println("Hello World! You will now do my evil bidding, MWAHAHAHA! Well, hopefully anyway! If not I'll be gobsmacked and heartbroken")
     renderer.setSize(window.innerWidth, window.innerHeight)
     container.appendChild(renderer.domElement)
 
