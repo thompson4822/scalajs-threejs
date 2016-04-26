@@ -2,70 +2,90 @@ package example.models
 
 import java.util.Date
 
-import example.models.MapType.MapType
+import example.models.MapTile.MapTile
 
-import scala.collection.immutable.IndexedSeq
+import scala.collection.{Set, mutable}
 import scala.util.Random
 
 class Model {
 
 }
 
-object MapType extends Enumeration {
-  type MapType = Value
-  val Floor, Wall = Value
-}
-
 case class Point(row: Int, col: Int)
 
-class Cavern(width: Int = 48, height: Int = 48, iterations: Int = 6, birthLimit: Int = 4, deathLimit: Int = 3) {
+object Cavern {
   val seed = new Date().getTime
   val rand = new Random(seed)
 
-  lazy val map: Seq[Seq[MapType]] = initial(width, height)
-
-
-  /// What is a map where ~40% of its tiles are walls and the rest floor?
-  def initial(width: Int, height: Int): Seq[Seq[MapType]] = {
-    Seq.fill[MapType](height, width) { if(rand.nextDouble() < 0.40) MapType.Wall else MapType.Floor }
+  // Create a cavern with the given information
+  def apply(width: Int, height: Int, iterations: Int = 6, birthLimit: Int = 4, deathLimit: Int = 3): Cavern = {
+    val initial = Array.fill[MapTile](height, width) {
+      if (rand.nextDouble() < 0.40) MapTile.Wall else MapTile.Floor
+    }
+    var cave = Cavern(initial, birthLimit, deathLimit)
+    (0 to iterations).foreach(_ => cave = nextGeneration(cave))
+    cave
   }
 
+  // Use simple cellular automata rules to generate a cavern map
+  def nextGeneration(cave: Cavern): Cavern = {
+    val newMap = Array.fill[MapTile](cave.height, cave.width){MapTile.Floor}
+    for{
+      rowIndex <- 0 until cave.height
+      colIndex <- 0 until cave.width
+      if(shouldBeWall(cave, rowIndex, colIndex))
+    } yield {
+      newMap(rowIndex)(colIndex) = MapTile.Wall
+    }
+    cave.copy(map = newMap)
+  }
+
+  // Should the given row and column in the provided map be a wall?
+  def shouldBeWall(cave: Cavern, row: Int, col: Int): Boolean = {
+    val map = cave.map
+    val walls: Int = (for {
+      rowIndex <- (row - 1) to (row + 1)
+      colIndex <- (col - 1) to (col + 1)
+      if !(rowIndex == row && colIndex == col) && (rowIndex < 0 || rowIndex >= cave.height || colIndex < 0 || colIndex >= cave.width || map(rowIndex)(colIndex) == MapTile.Wall)
+    } yield 1).sum
+    if(map(row)(col) == MapTile.Wall) walls >= cave.deathLimit else walls > cave.birthLimit
+  }
+}
+
+case class Cavern(map: MapType, birthLimit: Int, deathLimit: Int) {
+  /// What is a map where ~40% of its tiles are walls and the rest floor?
+
+  def height = map.length
+
+  def width = map(0).length
 
   /// Construct a cavern that is the subdivided form of an existing cavern.
-  def subdivide(cave: Cavern): Cavern = {
+  def subdivide: Cavern = {
     // Subdivide the current map. Could be done several times to get finer resolution
-    val newCave: Seq[Seq[MapType]] = cave.map.map(row => row.map(cell => cell -> cell).flatten).map(row => row -> row).flatten
-    smooth(newCave)
+    val newCave = Array.tabulate[MapTile](height * 2, width * 2) { case (row, col) => map(row / 2)(col / 2) }
+    val result = this.copy(map = newCave)
+    result.smooth
   }
-
-  def smooth(cave: Seq[Seq[MapType]]): Cavern = {
-
-    /*
 
   /// Smooth out the current map so the walls flow more naturally
   /// (NOTE - only useful in larger maps. In small maps, cavern structure can be lost using this)
-  void smooth() {
-    var result = new List<List<bool>>();
-    result.addAll(map);
-    for (int row = 0; row < height; row++) {
-      for (int col = 0; col < width; col++) {
-        if (map[row][col] == Cavern.WALL && wallCountMoore(row, col, 1) == 3)
-          result[row][col] = Cavern.FLOOR;
-      }
-    }
-    map = result;
-  }
-*/
-
-
-    ???
+  def smooth: Cavern = {
+    // TODO - I don't think there is getting around the side effects. In this method they are necessary.
+    val result: MapType = map.clone()
+    println(s"width/height = ${width}/${height}")
+    for {
+      rowIndex <- 0 until height
+      colIndex <- 0 until width
+      if map(rowIndex)(colIndex) == MapTile.Wall && wallCountMoore(rowIndex, colIndex, 1) == 3
+    } result(rowIndex)(colIndex) = MapTile.Floor
+    this.copy(map = result)
   }
 
   def firstFloorTile: Option[Point] = {
     for {
-      row <- 0 to map.length
-      col <- 0 to map(row).length
-      if(map(row)(col) == MapType.Floor)
+      row <- 0 until height
+      col <- 0 until width
+      if map(row)(col) == MapTile.Floor
     } yield {
       return Some(Point(row, col))
     }
@@ -80,172 +100,86 @@ class Cavern(width: Int = 48, height: Int = 48, iterations: Int = 6, birthLimit:
       currentRow = row + rowIndex
       currentCol = col + colIndex
     } yield {
-      if (currentRow < 0 || currentRow >= height || currentCol < 0 || currentCol >= width || map(currentRow)(currentCol) == MapType.Wall)
+      if (currentRow < 0 || currentRow >= height || currentCol < 0 || currentCol >= width || map(currentRow)(currentCol) == MapTile.Wall)
         if (!(rowIndex == 0 && colIndex == 0))
           walls += 1
     }
     walls
   }
 
-/*
-  /// Just how much of the map is navigable (is flooring)?
-  double get percentNavigable {
-    int totalFloorSpace = map
-        .map((row) => row.where((cell) => cell == Cavern.FLOOR).length)
-        .reduce((total, current) => total + current);
-    return totalFloorSpace / (width * height);
+  // Just how much of the map is navigable (is flooring)?
+  def percentNavigable: Double = {
+    val floor = for {
+      row <- map
+      col <- row
+      if col == MapTile.Floor
+    } yield col
+    floor.size / (map.length * map(0).length)
   }
 
-  /// Is the tile at the given row and column a floor?
-  bool isFloor(int row, int col) => map[row][col] == Cavern.FLOOR;
-
-  /// Should the given row and column in the provided map be a wall?
-  bool shouldBeWall(List<List<bool>> map, int row, int col) {
-    int walls = 0;
-    for (int rIndex = row - 1; rIndex <= row + 1; rIndex++) {
-      for (int cIndex = col - 1; cIndex <= col + 1; cIndex++) {
-        if (!(rIndex == row && cIndex == col) && (rIndex < 0 || rIndex >= height || cIndex < 0 || cIndex >= width || map[rIndex][cIndex] == WALL)) walls++;
-      }
-    }
-    return (map[row][col]) ? walls >= deathLimit : walls > birthLimit;
-  }
-
-  /// Use simple cellular automata rules to generate a cavern map
-  List<List<bool>> nextGeneration(List<List<bool>> oldMap) {
-    var result = new List<List<bool>>();
-    for (int row = 0; row < height; row++) {
-      result.add(new List<bool>());
-      for (int col = 0; col < width; col++) {
-        result[row].add(shouldBeWall(oldMap, row, col) ? Cavern.WALL : Cavern.FLOOR);
-      }
-    }
-    return result;
-  }
-
-
-  /// Given a list of locations, fill those areas with walls
-  void fillIn(List<int> locations) =>
-    locations.forEach((l) => map[l ~/ width][l % width] = WALL);
+  // Is the tile at the given row and column a floor?
+  def isFloor(row: Int, col: Int): Boolean =
+    map(row)(col) == MapTile.Floor
 
   /// What is the printable string representation of this cavern?
-  String toString() {
-    String rowString(row) => row.map((tile) => (tile == WALL) ? "#" : '.').join('');
-    return map.map((row) => rowString(row)).join('\n');
+  override def toString: String = {
+    def rowString(row: Array[MapTile]): String = {
+      row.map(cell => if(cell == MapTile.Floor) '.' else '#').mkString
+    }
+    (for {
+      row <- map
+      text = rowString(row)
+    } yield text).mkString("\n")
   }
-
- */
 
 
 }
 
-/*
-typedef bool DetermineWall(int row, int col);
-typedef void MapIterator(int row, int col);
+class FloodFill(cavern: Cavern) {
 
-class Cavern {
-
-  /// Construct a cavern of the given width and height, with cellular automata information to guide the cavern formation.
-  Cavern({int this.width: 48, int this.height: 48, int this.iterations: 6, int this.birthLimit: 4, int this.deathLimit: 3}) {
-    map = initial();
-    //print(cavernString(map));
-    for (int iteration = 0; iteration < iterations; iteration++) map = nextGeneration(map);
+  // Get all of the floor positions
+  def getFloor: Set[Point] = {
+    (for {
+      row <- 0 until cavern.height
+      col <- 0 until cavern.width
+      if cavern.isFloor(row, col)
+    } yield Point(row, col)).toSet
   }
 
-  /// Smooth out the current map so the walls flow more naturally
-  /// (NOTE - only useful in larger maps. In small maps, cavern structure can be lost using this)
-  void smooth() {
-    var result = new List<List<bool>>();
-    result.addAll(map);
-    for (int row = 0; row < height; row++) {
-      for (int col = 0; col < width; col++) {
-        if (map[row][col] == Cavern.WALL && wallCountMoore(row, col, 1) == 3)
-          result[row][col] = Cavern.FLOOR;
-      }
+  def subcaverns: Seq[Set[Point]] = {
+    def recSubcaverns(floorRemaining: Set[Point], accum: Seq[Set[Point]]): Seq[Set[Point]] = floorRemaining match {
+      case floor if floor.isEmpty => accum
+      case other =>
+        val point = other.head
+        val room = getRoom(point)
+        recSubcaverns(floorRemaining.diff(room), accum :+ room)
     }
-    map = result;
+    recSubcaverns(getFloor, Nil)
   }
 
-  Point get firstFloorTile {
-    for (int row = 0; row < height; row++) {
-      for (int col = 0; col < width; col++) {
-        if (map[row][col] == Cavern.FLOOR)
-          return new Point(row, col);
+  // This function has decent performance for what we need.
+  def getRoom(point: Point): Set[Point] = {
+    import scala.collection.mutable.{Set => MSet}
+    var accum: MSet[Point] = MSet[Point]()
+    val (row, col) = point.row -> point.col
+    def recGetRoom(currentRow: Int, currentCol: Int): MSet[Point] = {
+      val point = Point(currentRow, currentCol)
+      if(isWall(point) || accum.contains(point))
+        return accum
+      else {
+        accum += point
       }
+      accum = recGetRoom(row, col + 1) // right
+      accum = recGetRoom(row, col - 1); // left
+      accum = recGetRoom(row + 1, col); // down
+      recGetRoom(row - 1, col); // up
     }
-    return null;
+    recGetRoom(row, col).toSet
   }
 
-  /// Uses Moore's Neighborhood to figure out count. We don't really use it in this code.
-  int wallCountMoore(int row, int col, int distance) {
-    int walls = 0;
-    for (int rIndex = -distance; rIndex <= distance; rIndex++) {
-      for (int cIndex = -distance; cIndex <= distance; cIndex++) {
-        var currentRow = row + rIndex;
-        var currentCol = col + cIndex;
-        if (currentRow < 0 || currentRow >= height || currentCol < 0 || currentCol >= width || map[currentRow][currentCol] == WALL)
-          if (!(rIndex == 0 && cIndex == 0))
-            walls++;
-      }
-    }
-    return walls;
-  }
-
-  /// Just how much of the map is navigable (is flooring)?
-  double get percentNavigable {
-    int totalFloorSpace = map
-        .map((row) => row.where((cell) => cell == Cavern.FLOOR).length)
-        .reduce((total, current) => total + current);
-    return totalFloorSpace / (width * height);
-  }
-
-  /// Is the tile at the given row and column a floor?
-  bool isFloor(int row, int col) => map[row][col] == Cavern.FLOOR;
-
-  /// Should the given row and column in the provided map be a wall?
-  bool shouldBeWall(List<List<bool>> map, int row, int col) {
-    int walls = 0;
-    for (int rIndex = row - 1; rIndex <= row + 1; rIndex++) {
-      for (int cIndex = col - 1; cIndex <= col + 1; cIndex++) {
-        if (!(rIndex == row && cIndex == col) && (rIndex < 0 || rIndex >= height || cIndex < 0 || cIndex >= width || map[rIndex][cIndex] == WALL)) walls++;
-      }
-    }
-    return (map[row][col]) ? walls >= deathLimit : walls > birthLimit;
-  }
-
-  /// Use simple cellular automata rules to generate a cavern map
-  List<List<bool>> nextGeneration(List<List<bool>> oldMap) {
-    var result = new List<List<bool>>();
-    for (int row = 0; row < height; row++) {
-      result.add(new List<bool>());
-      for (int col = 0; col < width; col++) {
-        result[row].add(shouldBeWall(oldMap, row, col) ? Cavern.WALL : Cavern.FLOOR);
-      }
-    }
-    return result;
-  }
-
-  /// What is a map where ~40% of its tiles are walls and the rest floor?
-  List<List<bool>> initial() {
-    var result = new List<List<bool>>();
-    for (var row = 0; row < height; row++) {
-      result.add(new List<bool>());
-      for (var col = 0; col < width; col++) {
-        result[row].add((rand.nextDouble() < .40) ? WALL : FLOOR);
-      }
-    }
-    return result;
-  }
-
-  /// Given a list of locations, fill those areas with walls
-  void fillIn(List<int> locations) =>
-    locations.forEach((l) => map[l ~/ width][l % width] = WALL);
-
-  /// What is the printable string representation of this cavern?
-  String toString() {
-    String rowString(row) => row.map((tile) => (tile == WALL) ? "#" : '.').join('');
-    return map.map((row) => rowString(row)).join('\n');
-  }
-
+  def isWall(point: Point): Boolean =
+    point.row < 0 || point.row >= cavern.height ||
+    point.col < 0 || point.col >= cavern.width ||
+    cavern.map(point.row)(point.col) == MapTile.Wall
 
 }
- */
