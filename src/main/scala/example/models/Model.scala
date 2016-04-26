@@ -11,7 +11,12 @@ class Model {
 
 }
 
-case class Point(row: Int, col: Int)
+case class Point(row: Int, col: Int) {
+  def left: Point = this.copy(col = col - 1)
+  def right: Point = this.copy(col = col + 1)
+  def up: Point = this.copy(row = row - 1)
+  def down: Point = this.copy(row = row + 1)
+}
 
 object Cavern {
   val seed = new Date().getTime
@@ -161,20 +166,19 @@ class FloodFill(cavern: Cavern) {
   def getRoom(point: Point): Set[Point] = {
     import scala.collection.mutable.{Set => MSet}
     var accum: MSet[Point] = MSet[Point]()
-    val (row, col) = point.row -> point.col
-    def recGetRoom(currentRow: Int, currentCol: Int): MSet[Point] = {
-      val point = Point(currentRow, currentCol)
+    //val (row, col) = point.row -> point.col
+    def recGetRoom(point: Point): MSet[Point] = {
       if(isWall(point) || accum.contains(point))
         return accum
       else {
         accum += point
       }
-      accum = recGetRoom(row, col + 1) // right
-      accum = recGetRoom(row, col - 1); // left
-      accum = recGetRoom(row + 1, col); // down
-      recGetRoom(row - 1, col); // up
+      accum = recGetRoom(point.right)
+      accum = recGetRoom(point.left)
+      accum = recGetRoom(point.down)
+      recGetRoom(point.up);
     }
-    recGetRoom(row, col).toSet
+    recGetRoom(point).toSet
   }
 
   def isWall(point: Point): Boolean =
