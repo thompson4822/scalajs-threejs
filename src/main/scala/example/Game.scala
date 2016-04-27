@@ -18,13 +18,14 @@ object Game {
     renderer.setSize(window.innerWidth, window.innerHeight)
     container.appendChild(renderer.domElement)
 
-    scene.add(cube)
+    //scene.add(cube)
     camera.position.z = 10
 
     val loader = new JSONLoader()
     loader.load( "flask.json", {(geometry: JSonLoaderResultGeometry, materials: js.Array[Material]) =>
-      val model = new Mesh(geometry, new MeshFaceMaterial(materials))
-      scene.add(model)
+      flask = new Mesh(geometry, materials(0))
+      flask.scale.set(3, 3, 3)
+      scene.add(flask)
       println("Added flask ... ?!?!")
     })
 
@@ -37,7 +38,7 @@ object Game {
 
     //println(createCavern)
 
-    renderScene(60)
+    renderScene(System.currentTimeMillis())
   }
 
   val window = dom.window
@@ -48,10 +49,14 @@ object Game {
   val material = new MeshBasicMaterial(js.Dynamic.literal(color = 0x00ff00).asInstanceOf[MeshBasicMaterialParameters])
   val cube = new Mesh(geometry, material)
 
-  def renderScene(time: Double): Unit = {
-    dom.window.requestAnimationFrame((t: Double) => renderScene(t))
-    cube.rotation.x += 0.01
-    cube.rotation.y += 0.01
+  var flask: Mesh = _
+
+  def renderScene(timestamp: Double): Unit = {
+    dom.window.requestAnimationFrame(renderScene _)
+    if(flask != null) {
+      flask.rotation.x += 0.01
+      flask.rotation.y += 0.01
+    }
     renderer.render(scene, camera)
   }
 
