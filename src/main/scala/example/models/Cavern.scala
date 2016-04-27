@@ -7,17 +7,6 @@ import example.models.MapTile.MapTile
 import scala.collection.{Set, mutable}
 import scala.util.Random
 
-class Model {
-
-}
-
-case class Point(row: Int, col: Int) {
-  def left: Point = this.copy(col = col - 1)
-  def right: Point = this.copy(col = col + 1)
-  def up: Point = this.copy(row = row - 1)
-  def down: Point = this.copy(row = row + 1)
-}
-
 object Cavern {
   val seed = new Date().getTime
   val rand = new Random(seed)
@@ -68,8 +57,7 @@ case class Cavern(map: MapType, birthLimit: Int, deathLimit: Int) {
   def subdivide: Cavern = {
     // Subdivide the current map. Could be done several times to get finer resolution
     val newCave = Array.tabulate[MapTile](height * 2, width * 2) { case (row, col) => map(row / 2)(col / 2) }
-    val result = this.copy(map = newCave)
-    result.smooth
+    this.copy(map = newCave)
   }
 
   /// Smooth out the current map so the walls flow more naturally
@@ -86,17 +74,8 @@ case class Cavern(map: MapType, birthLimit: Int, deathLimit: Int) {
     this.copy(map = result)
   }
 
-  def firstFloorTile: Option[Point] = {
-    for {
-      row <- 0 until height
-      col <- 0 until width
-      if map(row)(col) == MapTile.Floor
-    } yield {
-      return Some(Point(row, col))
-    }
-    None
-  }
-
+  // Simple algorithm to count all of the walls within distance of the given location,
+  // not including the location itself.
   def wallCountMoore(row: Int, col: Int, distance: Int): Int = {
     var walls = 0;
     for {
@@ -140,50 +119,3 @@ case class Cavern(map: MapType, birthLimit: Int, deathLimit: Int) {
 
 }
 
-class FloodFill(cavern: Cavern) {
-
-  // Get all of the floor positions
-  def getFloor: Set[Point] = {
-    (for {
-      row <- 0 until cavern.height
-      col <- 0 until cavern.width
-      if cavern.isFloor(row, col)
-    } yield Point(row, col)).toSet
-  }
-
-  def subcaverns: Seq[Set[Point]] = {
-    def recSubcaverns(floorRemaining: Set[Point], accum: Seq[Set[Point]]): Seq[Set[Point]] = floorRemaining match {
-      case floor if floor.isEmpty => accum
-      case other =>
-        val point = other.head
-        val room = getRoom(point)
-        recSubcaverns(floorRemaining.diff(room), accum :+ room)
-    }
-    recSubcaverns(getFloor, Nil)
-  }
-
-  // This function has decent performance for what we need.
-  def getRoom(point: Point): Set[Point] = {
-    import scala.collection.mutable.{Set => MSet}
-    var accum: MSet[Point] = MSet[Point]()
-    //val (row, col) = point.row -> point.col
-    def recGetRoom(point: Point): MSet[Point] = {
-      if(isWall(point) || accum.contains(point))
-        return accum
-      else {
-        accum += point
-      }
-      accum = recGetRoom(point.right)
-      accum = recGetRoom(point.left)
-      accum = recGetRoom(point.down)
-      recGetRoom(point.up);
-    }
-    recGetRoom(point).toSet
-  }
-
-  def isWall(point: Point): Boolean =
-    point.row < 0 || point.row >= cavern.height ||
-    point.col < 0 || point.col >= cavern.width ||
-    cavern.map(point.row)(point.col) == MapTile.Wall
-
-}
